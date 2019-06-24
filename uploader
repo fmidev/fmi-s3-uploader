@@ -1,0 +1,82 @@
+#!/usr/local/bin/python
+import os,sys,string,argparse,requests,re,datetime
+import fmis3.FMIS3 as fmis3
+from fmis3 import io
+from os import listdir
+from os.path import isfile, join
+
+def main(argv):
+    description = "Script for uploading files to S3"
+    epilog = '''
+
+'''
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     description=description, epilog=epilog)
+    parser.add_argument('--file_suffix', metavar='file_suffix', nargs='?',
+                        help='File name prefix (in case of downloading files)')
+    parser.add_argument('--dir', metavar='dir', nargs='?',
+                        help='Directory where files are searched from')
+    parser.add_argument('--s3', metavar='s3', nargs='?',
+                        help='S3 bucket name to fulfill with found files')
+    parser.add_argument('--verbose', metavar='v', nargs='?',
+                        help='Verbose mode')
+    parser.add_argument('--s3_folder', metavar='s3_folder', nargs='?',
+                        help='Upload files into given folder. Use magic word "recursive" to use date based folder structure (extract datetime from the file, assuming format yyyymmddhh).')
+
+    args = parser.parse_args()
+
+    # Get proxy from env
+    try:
+        proxy_host = os.environ['https_proxy'].split(':').pop(0)
+        proxy_port = os.environ['https_proxy'].split(':').pop(1)
+    except:
+        proxy_host = None
+        proxy_port = None
+
+    try:
+        AWS_ACCESS_KEY_ID = os.environ['AWS_ACCESS_KEY_ID']
+        AWS_SECRET_ACCESS_KEY = os.environ['AWS_SECRET_ACCESS_KEY']
+    except:
+        msg = """
+        Put following environment variables to your environment:"
+          export AWS_ACCESS_KEY_ID=xxx
+          export AWS_SECRET_ACCESS_KEY=xxx
+        """
+        print(msg)
+        sys.exit(2)
+
+    verbose = False
+    if args.verbose is not None:
+        verbose = True
+
+    # Initialize
+    fh = io.FileHandler()
+    fh.set_verbose(verbose)
+
+    # Execute
+    try:
+        ## Initialize fs3 and find files
+        fs3 = fmis3.FMIS3Handler(args.s3)
+        fs3.set_verbose(verbose)
+        fh.set_fs3(fs3)
+
+        files =  fh.list_files(args.dir, args.file_suffix)
+        if verbose:
+            fh.print_files(files)
+
+        ## Upload files to s3
+        if args.s3 is not None:
+            if verbose:
+                print("Handling files...")
+
+            for name in files:
+                fs3.handle_file(name, args.s3_folder)
+
+    except UnboundLocalError as e:
+        print(e)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
